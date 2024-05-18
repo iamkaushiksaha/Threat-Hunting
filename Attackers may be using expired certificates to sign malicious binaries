@@ -1,0 +1,128 @@
+Understanding and Using Digital Certificates in PE Files: A Guide for Beginners
+Digital certificates play a crucial role in ensuring the legitimacy and security of Portable Executable (PE) files. In this guide, we'll explore the importance of digital certificates, how to analyze PE files, what to do when receiving a malicious hash, the process of threat hunting, formulating hypotheses, identifying related threats, and automating correlation rules to monitor anomalies.
+
+1. Why Signed Certificates are Important in Legitimate PE Files
+Importance of Signed Certificates:
+
+Authenticity: Ensures the software is created by a legitimate publisher.
+Integrity: Confirms that the software has not been tampered with since it was signed.
+Trust: Helps users and systems decide if the software is safe to install and run.
+Compliance: Many platforms and security policies require software to be signed by a trusted authority.
+Key Vectors to Check on PE Using Tools:
+
+Compilation Date: When the PE file was compiled.
+Digital Signature: The certificate used to sign the file.
+Certificate Details: Including the issuer, serial number, and thumbprint.
+Tools for Analysis:
+
+Sysinternals Sigcheck: Provides detailed information about digital signatures.
+PEview: Lightweight tool to view PE file structure.
+CFF Explorer: Comprehensive tool for PE file details.
+Hex Editors: For byte-level analysis (HxD, Hex Fiend).
+Python with pefile Library: Programmatic extraction of PE details.
+2. What to Do When Receiving a Malicious Hash from Threat Intelligence (TI)
+When a SOC team receives a hash for a known threat:
+
+Run Initial Queries:
+
+Sentinel KQL Query:
+kql
+Copy code
+let known_hashes = dynamic(["known_hash"]);
+DeviceFileEvents
+| where SHA256 in (known_hashes)
+Extract Detailed Information:
+
+Extract certificate details, including issuer and serial number.
+Use tools like sigcheck or Python scripts to get detailed info.
+Verify Against Existing Logs:
+
+Check old logs in Sentinel and Microsoft Defender for Endpoint (MDE) for matches.
+3. When Threat Hunting is Required
+Threat Hunting Process:
+
+Proactive Search: Actively look for threats that evade automated solutions.
+Hypothesis Generation: Based on threat intelligence, recent incidents, or observed anomalies.
+Data Collection and Analysis: Gather and analyze data from various sources.
+Investigation: Confirm the presence of threats through detailed analysis.
+Response: Coordinate with the incident response team to mitigate identified threats.
+4. Formulating a Hypothesis
+Example Hypothesis: "Attackers may be using expired certificates to sign malicious binaries."
+
+Steps:
+
+Data Collection: Gather relevant data from logs, network traffic, and threat intelligence feeds.
+Data Analysis: Analyze collected data to identify indicators of compromise (IOCs).
+Hypothesis Testing: Use specific queries and tools to validate the hypothesis.
+5. Identifying More Hashes from VirusTotal Using Certificate Serial Number
+Steps:
+
+Extract Certificate Information:
+
+Use tools to extract the certificate issuer and serial number.
+Example YARA Rule:
+yara
+Copy code
+import "pe"
+
+rule SUSP_NVIDIA_LAPSUS_Leak_Compromised_Cert_Mar22_1 {
+   meta:
+      description = "Detects a binary signed with the leaked NVIDIA certificate and compiled after March 1st 2022"
+      author = "Florian Roth (Nextron Systems)"
+      date = "2022-03-03"
+      modified = "2022-03-04"
+      score = 70
+      reference = "https://twitter.com/cyb3rops/status/1499514240008437762"
+      id = "8bc7460f-a1c4-5157-8c2d-34d3a6c9c7e9"
+   condition:
+      uint16(0) == 0x5a4d and filesize < 100MB and
+      pe.timestamp > 1646092800 and  // comment out to find all files signed with that certificate
+      for any i in (0 .. pe.number_of_signatures) : (
+         pe.signatures[i].issuer contains "VeriSign Class 3 Code Signing 2010 CA" and (
+            pe.signatures[i].serial == "43:bb:43:7d:60:98:66:28:6d:d8:39:e1:d0:03:09:f5" or
+            pe.signatures[i].serial == "14:78:1b:c8:62:e8:dc:50:3a:55:93:46:f5:dc:c5:18"
+         )
+      )
+}
+Manual Mode in VirusTotal:
+
+Use the certificate serial number to search for related hashes on VirusTotal.
+Go to VirusTotal and use the search feature to look up the certificate serial number.
+Review the results to find other related hashes and gather additional context.
+Reinvestigate in Your Environment:
+
+Use new hashes found on VirusTotal to search for additional instances in your organization.
+Example KQL Query in Sentinel:
+kql
+Copy code
+let new_hashes = dynamic(["new_hash1", "new_hash2", "new_hash3"]);
+DeviceFileEvents
+| where SHA256 in (new_hashes)
+6. Automate Correlation Rules to Monitor for Any Anomaly
+Steps:
+
+Develop Detection Rules:
+
+Create rules to detect anomalies based on identified patterns and IOCs.
+Example rule to detect expired certificate usage:
+kql
+Copy code
+let expiredThreshold = 0d;
+DeviceFileEvents
+| where Timestamp < now() - expiredThreshold
+| where CertificateIssuer == "specific issuer" and CertificateSerialNumber in ("serial1", "serial2")
+Set Up Alerts:
+
+Configure alerts in Sentinel and MDE based on detection rules.
+Example Alert Configuration:
+kql
+Copy code
+DeviceFileEvents
+| where ActionType == "FileCreated" and FileName endswith ".exe"
+| summarize count() by SHA256, FileName, FolderPath
+| top 10 by count_
+Continuous Monitoring:
+
+Implement continuous monitoring to detect and respond to anomalies.
+Regularly update detection rules to cover new threats.
+By following these steps, you can effectively understand the importance of digital certificates, analyze PE files, respond to malicious hashes, conduct threat hunting, formulate hypotheses, identify related threats, and automate monitoring for anomalies. This comprehensive approach enhances your organization's security posture and improves threat detection and response capabilities.
