@@ -1,0 +1,104 @@
+Useful Python Scripts for PE File Analysis and Threat Hunting
+Introduction
+Digital certificates play a crucial role in ensuring the legitimacy and security of Portable Executable (PE) files. In this guide, we'll explore the importance of digital certificates, how to analyze PE files, what to do when receiving a malicious hash, the process of threat hunting, formulating hypotheses, identifying related threats, and automating correlation rules to monitor anomalies.
+1. Extract Compilation Date from a PE File
+This script uses the pefile library to extract the compilation date of a PE file.
+
+import pefile
+from datetime import datetime
+
+def get_pe_compilation_date(file_path):
+    pe = pefile.PE(file_path)
+    timestamp = pe.FILE_HEADER.TimeDateStamp
+    compilation_date = datetime.utcfromtimestamp(timestamp)
+    return compilation_date
+
+# Example usage
+file_path = "path/to/suspicious/file.exe"
+compilation_date = get_pe_compilation_date(file_path)
+print(f"Compilation Date: {compilation_date}")
+    
+2. Extract Certificate Information from a PE File
+This script extracts certificate details, including the issuer, serial number, and expiration date.
+
+import pefile
+
+def extract_certificate_info(file_path):
+    pe = pefile.PE(file_path)
+    cert_info = []
+    if hasattr(pe, 'DIRECTORY_ENTRY_SECURITY'):
+        for security_entry in pe.DIRECTORY_ENTRY_SECURITY:
+            if hasattr(security_entry, 'Certificate'):
+                cert = security_entry.Certificate
+                cert_info.append({
+                    'Issuer': cert.Issuer,
+                    'Serial Number': cert.SerialNumber,
+                    'Expiration Date': cert.ValidTo
+                })
+    return cert_info
+
+# Example usage
+file_path = "path/to/suspicious/file.exe"
+cert_info = extract_certificate_info(file_path)
+print(cert_info)
+    
+3. Fetch Detailed Certificate Information from VirusTotal
+This script uses the VirusTotal API to fetch detailed certificate information, including the expiration date.
+
+import requests
+
+def get_certificate_expiry(api_key, file_hash):
+    url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
+    headers = {"x-apikey": api_key}
+    response = requests.get(url, headers=headers)
+    cert_info = response.json().get('data', {}).get('attributes', {}).get('pe_info', {}).get('digital_signatures', [])
+    cert_details = []
+    for cert in cert_info:
+        issuer = cert.get('issuer')
+        serial_number = cert.get('serial_number')
+        expiration_date = cert.get('valid_to')
+        cert_details.append({
+            'Issuer': issuer,
+            'Serial Number': serial_number,
+            'Expiration Date': expiration_date
+        })
+    return cert_details
+
+# Example usage
+api_key = "your_virustotal_api_key"
+file_hash = "known_hash"
+cert_details = get_certificate_expiry(api_key, file_hash)
+print(cert_details)
+    
+4. Correlate Compilation Date and Certificate Expiry Date
+This script correlates the PE file's compilation date with the certificate's expiration date to determine if the file was compiled before the certificate expired.
+
+from datetime import datetime
+
+def correlate_dates(compilation_date, cert_details):
+    for cert in cert_details:
+        cert_expiry_date = datetime.strptime(cert['expiration_date'], "%Y-%m-%dT%H:%M:%SZ")
+        if compilation_date < cert_expiry_date:
+            print(f"Compilation Date: {compilation_date}")
+            print(f"Issuer: {cert['issuer']}")
+            print(f"Serial Number: {cert['serial_number']}")
+            print(f"Expiration Date: {cert_expiry_date}")
+            print("The PE file was compiled before the certificate expired.\n")
+        else:
+            print(f"Compilation Date: {compilation_date}")
+            print(f"Issuer: {cert['issuer']}")
+            print(f"Serial Number: {cert['serial_number']}")
+            print(f"Expiration Date: {cert_expiry_date}")
+            print("The PE file was compiled after the certificate expired.\n")
+
+# Example usage
+compilation_date = datetime.strptime("2023-03-01", "%Y-%m-%d")
+cert_details = [
+    {
+        'issuer': 'Example Issuer',
+        'serial_number': '1234567890',
+        'expiration_date': '2023-04-01T00:00:00Z'
+    }
+]
+correlate_dates(compilation_date, cert_details)
+    
